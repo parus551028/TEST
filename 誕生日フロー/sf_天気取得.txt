@@ -1,0 +1,76 @@
+
+FUNCTION sf_天気取得 GLOBAL
+    File.WriteText File: dicConfig.LogPath TextToWrite: $'''--------------------------------------------------------------------------
+■　sf_天気取得
+--------------------------------------------------------------------------''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+    Web.InvokeWebService.InvokeWebService Url: dicConfig.WeatherAPI Method: Web.Method.Get Accept: $'''application/xml''' ContentType: $'''application/xml''' ConnectionTimeout: 30 FollowRedirection: True ClearCookies: False FailOnErrorStatus: False EncodeRequestBody: True UserAgent: $'''Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.21) Gecko/20100312 Firefox/3.6''' Encoding: Web.Encoding.AutoDetect AcceptUntrustedCertificates: False TrimRequestBody: True Response=> strWeatherAPIResult
+    File.GetTempPath TempFile=> TempFile
+    File.WriteText File: TempFile TextToWrite: strWeatherAPIResult AppendNewLine: True IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.DefaultEncoding
+    File.ReadTextFromFile.ReadTextAsList File: TempFile Encoding: File.TextFileEncoding.DefaultEncoding Contents=> strTempWeatherData
+    File.WriteText File: strResultFilePath TextToWrite: dicConfig.WeatherHeader AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+    LOOP FOREACH CurrentItem IN strTempWeatherData
+        # '// APIの結果を天気と気温が含まれている部分のみ抽出
+        IF (Contains(CurrentItem, '<pre>')) = True THEN
+            SET isWeatherFlg TO True
+        ELSE IF (Contains(CurrentItem, 'Morning')) = True THEN
+            EXIT LOOP
+        ELSE IF isWeatherFlg = True THEN
+            SET strWeatherWord TO $'''%strWeatherWord%
+%CurrentItem%'''
+        END
+    END
+    File.WriteText File: TempFile TextToWrite: strWeatherWord AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.DefaultEncoding
+    File.ReadTextFromFile.ReadTextAsList File: TempFile Encoding: File.TextFileEncoding.DefaultEncoding Contents=> strTempWeatherData
+    SET isWeatherFlg TO False
+    LOOP FOREACH CurrentItem IN strTempWeatherData
+        # '// 抽出部分から「天気」部分を取得する
+        IF (isWeatherHitFlg AND NOT (CurrentItem.isEmpty) AND NOT (isWeatherFlg)) = True THEN
+            Text.CropText.CropTextAfterFlag Text: CurrentItem FromFlag: $'''</span>''' IgnoreCase: True CroppedText=> varWork
+            SET varWork TO CurrentItem.Trimmed
+            DISABLE Text.Replace Text: CurrentItem TextToFind: $'''  <span class=\"ef226\">   \\  /</span>       ''' IsRegEx: False IgnoreCase: False ReplaceWith: $'''%''%''' ActivateEscapeSequences: False Result=> varWork
+            **REGION 天気を英語から日本語に変換
+            /# '// 天気予報APIの結果に<SPAN>があるパターン都内パターンがあり。
+'// その為、CaseではなくElseIFを使用し「xxxが含まれているか」で判断している。
+'// 並びに気を付けること。「Parly cloudy」の後ろに「Cloudy」を設定するなど。#/
+            IF (Contains(varWork.Trimmed, 'Clear')) = True THEN
+                SET varWork TO $'''晴れ'''
+            ELSE IF (Contains(varWork.Trimmed, 'Partly cloudy')) = True THEN
+                SET varWork TO $'''部分的に曇り'''
+            ELSE IF (Contains(varWork.Trimmed, 'Light rain shower')) = True THEN
+                SET varWork TO $'''小雨'''
+            ELSE IF (Contains(varWork.Trimmed, 'Heavy snow')) = True THEN
+                SET varWork TO $'''大雪'''
+            ELSE IF (Contains(varWork.Trimmed, 'Overcast')) = True THEN
+                SET varWork TO $'''どんより曇った'''
+            ELSE IF (Contains(varWork.Trimmed, 'Mist')) = True THEN
+                SET varWork TO $'''霧'''
+            ELSE IF (Contains(varWork.Trimmed, 'Fog')) = True THEN
+                SET varWork TO $'''濃霧'''
+            ELSE IF (Contains(varWork.Trimmed, 'Rain')) = True THEN
+                SET varWork TO $'''大雨'''
+            ELSE IF (Contains(varWork.Trimmed, 'Snow')) = True THEN
+                SET varWork TO $'''雪'''
+            ELSE IF (Contains(varWork.Trimmed, 'Thunderstorm')) = True THEN
+                SET varWork TO $'''雷雨'''
+            ELSE IF (Contains(varWork.Trimmed, 'Cloudy')) = True THEN
+                SET varWork TO $'''曇り'''
+            ELSE
+                SET varWork TO $'''該当なし：%varWork.Trimmed%'''
+            END
+            SET strWeatherResult TO varWork
+            **ENDREGION
+            SET isWeatherFlg TO True
+        END
+        IF (Contains(CurrentItem, 'Weather report:')) = True THEN
+            SET isWeatherHitFlg TO True
+        END
+        IF (Contains(CurrentItem, ' °C')) = True THEN
+            Text.CropText.CropTextBetweenFlags Text: CurrentItem FromFlag: $'''>(''' ToFlag: $'''>)''' IgnoreCase: False CroppedText=> varWork
+            Text.CropText.CropTextBetweenFlags Text: varWork FromFlag: $'''>''' ToFlag: $'''<''' IgnoreCase: False CroppedText=> varWork
+            SET strWeatherResult TO $'''%strWeatherResult%（%varWork%℃）'''
+            File.WriteText File: strResultFilePath TextToWrite: strWeatherResult AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            File.WriteText File: dicConfig.LogPath TextToWrite: strWeatherResult AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            EXIT LOOP
+        END
+    END
+END FUNCTION

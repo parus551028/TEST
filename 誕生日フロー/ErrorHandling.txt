@@ -1,0 +1,36 @@
+
+FUNCTION ErrorHandling GLOBAL
+    /# '// エラーハンドリング処理
+'// エラー内容をメール送信」、「エラーポップアップ出力」#/
+    SWITCH strErrorHandring
+        CASE = $'''Default'''
+            **REGION 基本エラーハンドリング
+            ERROR => strLastError
+            Workstation.TakeScreenshot.TakeScreenshotAndSaveToFile File: $'''%dicConfig.TempPath%\\Error.jpg''' ImageFormat: System.ImageFormat.Jpg
+            File.WriteText File: dicConfig.LogPath TextToWrite: $'''--------------------------------------------------------------------------
+            ！！　エラー発生
+            --------------------------------------------------------------------------
+            【発生箇所】%strLastError.Location%
+            【詳細】%strLastError.ErrorDetails%''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+        ON ERROR
+
+        END
+            Email.SendEmail.AuthenticateAndSend SMTPServer: dicConfig.SMTP Port: dicConfig.Port EnableSSL: True Username: dicConfig.UserName Password: dicConfig.Password AcceptUntrustedCertificates: False SendFrom: dicConfig.SendMailAddress SendTo: dicConfig.SendMailTo CC: dicConfig.SendMailCc BCC: dicConfig.SendMailBcc Subject: $'''【%ROBOT_NAME%】異常終了''' Body: $'''【発生箇所】%strLastError.Location%                                                  【詳細】%strLastError.ErrorDetails%''' IsBodyHtml: False Attachments: $'''\"%dicConfig.LogPath%\" \"%dicConfig.TempPath%\\Error.jpg\"'''
+        ON ERROR
+
+        END
+            File.WriteText File: dicConfig.LogPath TextToWrite: $'''%ROBOT_NAME%　異常終了''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+        ON ERROR
+
+        END
+            EXIT Code: 0 ErrorMessage: strLastError
+            **ENDREGION
+        CASE = $'''キャラクターWeb広告対応'''
+            WebAutomation.CloseWebBrowser BrowserInstance: broBirthdayWeb
+        ON ERROR
+
+        END
+            File.WriteText File: dicConfig.LogPath TextToWrite: $'''sf_キャラクター誕生日検索処理でエラー発生''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            SET GetCharErrorFlg TO True
+    END
+END FUNCTION

@@ -1,0 +1,65 @@
+# '// ｛フローの説明を書く｝
+BLOCK ErrorHandling
+ON BLOCK ERROR all
+    SET strErrorHandring TO $'''Default'''
+    CALL ErrorHandling
+    THROW ERROR
+END
+    **REGION 初期処理
+    SET pjDir TO $'''P:\\P004_誕生日・イベント取得'''
+    SET ROBOT_NAME TO $'''P004_誕生日・イベント取得'''
+    CALL init
+    **ENDREGION
+    **REGION 主処理
+    BLOCK 天気取得API異常時はスキップし後続実施
+ON BLOCK ERROR all
+
+END
+        IF (isWeatherTranRunFlg AND i_WeatherResult.IsEmpty) = True THEN
+            # '// 天気取得処理
+            CALL sf_天気取得
+        ELSE
+            SET strWeatherResult TO i_WeatherResult
+            File.WriteText File: dicConfig.LogPath TextToWrite: $'''--------------------------------------------------------------------------
+■　sf_天気取得（引数あり）
+--------------------------------------------------------------------------''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            File.WriteText File: strResultFilePath TextToWrite: $'''■　天気：''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            File.WriteText File: strResultFilePath TextToWrite: strWeatherResult AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+            File.WriteText File: dicConfig.LogPath TextToWrite: strWeatherResult AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+        END
+    END
+    # '// イベント取得処理
+    BLOCK イベント検索異常時はスキップし後続実施
+ON BLOCK ERROR all
+
+END
+        CALL sf_イベント検索
+    END
+    # '// キャラクター誕生日取得処理
+    CALL sf_キャラクター誕生日検索
+    **ENDREGION
+    **REGION 処理結果メール送信処理
+    # '// メールに本文に設定する内容を成果物ファイルから読み取る
+    File.ReadTextFromFile.ReadTextAsList File: strResultFilePath Encoding: File.TextFileEncoding.DefaultEncoding Contents=> varWork
+    LOOP FOREACH CurrentItem IN varWork
+        SET strResult TO $'''%strResult%%CurrentItem%<br>'''
+    END
+    Text.Replace Text: dicConfig.MailSubject TextToFind: $'''{ROBOT_NAME}''' IsRegEx: False IgnoreCase: False ReplaceWith: ROBOT_NAME ActivateEscapeSequences: False Result=> varWork
+    SET dicConfig.MailSubject TO varWork
+    Text.Replace Text: dicConfig.MailBody TextToFind: $'''{実行日}''' IsRegEx: False IgnoreCase: False ReplaceWith: $'''%dicCurrentDate.yyyyMMdd%　%dicCurrentDate.HHmmss%''' ActivateEscapeSequences: False Result=> varWork
+    Text.Replace Text: varWork TextToFind: $'''{処理内容}''' IsRegEx: False IgnoreCase: False ReplaceWith: strResult ActivateEscapeSequences: False Result=> varWork
+    SET dicConfig.MailBody TO varWork
+    File.WriteText File: dicConfig.LogPath TextToWrite: $'''--------------------------------------------------------------------------
+■　結果メール送信処理
+--------------------------------------------------------------------------
+【件名】%dicConfig.MailSubject%
+
+【本文】
+%dicConfig.MailBody%''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+    Email.SendEmail.AuthenticateAndSend SMTPServer: dicConfig.SMTP Port: dicConfig.Port EnableSSL: True Username: dicConfig.UserName Password: dicConfig.Password AcceptUntrustedCertificates: False SendFrom: dicConfig.SendMailAddress SendTo: dicConfig.SendMailTo CC: dicConfig.SendMailCc BCC: dicConfig.SendMailBcc Subject: dicConfig.MailSubject Body: dicConfig.MailBody IsBodyHtml: True Attachments: $'''\"%dicConfig.LogPath%\" \"%strResultFilePath%\"'''
+    **ENDREGION
+    **REGION 成果物アップロード
+    File.Move Files: strResultFilePath Destination: dicConfig.OutputPath IfFileExists: File.IfExists.Overwrite
+    **ENDREGION
+    File.WriteText File: dicConfig.LogPath TextToWrite: $'''%ROBOT_NAME%　正常終了''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.DefaultEncoding
+END
